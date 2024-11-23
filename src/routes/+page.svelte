@@ -6,10 +6,21 @@ import * as d3 from 'd3';
 
 import { onMount } from 'svelte';
 
+let map;
 let foo;
+let stations = [];
+let mapViewChanged = 0;
+let trips = [];
+
+
+function getCoords(station) {
+        let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
+        let { x, y } = map.project(point);
+        return { cx: x, cy: y };
+    }
 
 onMount(async () => {
-    let map = new mapboxgl.Map({
+    map = new mapboxgl.Map({
       container: 'map', // ID of the HTML element for the map
       style: 'mapbox://styles/chm011/cm3tpnwup00bu01sva3jn38bw', // Your custom Mapbox style
       center: [-71.1138879, 42.3586452], // Longitude, Latitude
@@ -51,26 +62,42 @@ onMount(async () => {
         'line-opacity': 0.4, 
       },
     });
-    let stations = []
-    stations = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-stations.csv');
 
+    
+    stations = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-stations.csv',(d) => ({
+      Lat: +d.Lat,
+      Long: +d.Long,
+    }));
+    $: map?.on('move', (evt) => mapViewChanged++);
+    
+   trips = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-traffic-2024-03.csv',(d) => ({
+        rid_id: d.rid_id,
+        bike_type: d.bike_type,
+        started_at: d.started_at,
+        ended_at: d.ended_at,
+        start_station_id: d.start_station_id,
+        end_station_id: d.end_station_id,
+        is_member: d.is_member
+    }));
+
+    departures = d3.rollup(
+        trips,
+        (v) => v.length,
+        (d) => d.start_station_id
+    );
   });
-
-function getCoords(station) {
-    let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
-    let { x, y } = map.project(point);
-    return { cx: x, cy: y };
-    }
 
 
 </script>
 
 <div id="map">
+    {#key mapViewChanged}
     <svg id="station-points">
         {#each stations as station}
             <circle {...getCoords(station)} r='5' fill='steelblue' />
         {/each}
     </svg>
+    {/key}
 </div>
 
 
