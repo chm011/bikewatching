@@ -11,14 +11,19 @@ let foo;
 let stations = [];
 let mapViewChanged = 0;
 let trips = [];
-
 let arrivals;
 let departures;
+
 function getCoords(station) {
         let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
         let { x, y } = map.project(point);
         return { cx: x, cy: y };
     }
+$: map?.on('move', (evt) => mapViewChanged++);
+$: radiusScale = d3
+    .scaleSqrt()
+    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
+    .range([0, 25]);    
 
 onMount(async () => {
     map = new mapboxgl.Map({
@@ -66,11 +71,16 @@ onMount(async () => {
 
     
     stations = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-stations.csv',(d) => ({
-      Lat: +d.Lat,
-      Long: +d.Long,
+        Number: d.Number,
+        NAME: d.NAME,
+        Lat: +d.Lat,
+        Long: +d.Long,
+        seasonal_status: d.seasonal_status,
+        municipality: d.municipality,
+        total_docks: d.total_docks
+
     }));
-    $: map?.on('move', (evt) => mapViewChanged++);
-    
+
    trips = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-traffic-2024-03.csv',(d) => ({
         rid_id: d.rid_id,
         bike_type: d.bike_type,
@@ -86,6 +96,11 @@ onMount(async () => {
         (v) => v.length,
         (d) => d.start_station_id
     );
+    arrivals = d3.rollup(
+        trips,
+        (v) => v.length,
+        (d) => d.end_station_id
+    );
 
 
     stations = stations.map((station) => {
@@ -96,20 +111,31 @@ onMount(async () => {
         return station;
     });
 
-    $: radiusScale = d3
-    .scaleSqrt()
-    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
-    .range([0, 25]);
+
   });
 
 
 </script>
+<header>
+    <h1> <a src='favicon.svg'></a> Bikewatching</h1>
+    <label>
+        Filter by time:
+        <input type="range" id = "time-slider" min="-1" max="1440"/>
+        <em>(any time)</em>
+        <time>11:17pm</time>
+
+    </label>
+</header>
 
 <div id="map">
     {#key mapViewChanged}
     <svg id="station-points">
         {#each stations as station}
-            <circle {...getCoords(station)} r='5' fill='steelblue' />
+            <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill='steelblue'>
+                <title>
+                    {station.totalTraffic} trips ({station.departures} departures, {station.arrivals} arrivals)
+                </title>
+            </circle>
         {/each}
     </svg>
     {/key}
@@ -120,6 +146,4 @@ onMount(async () => {
 @import url('$lib/global.css');
 </style>
 
-
-Bikewatching 
 
