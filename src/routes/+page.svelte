@@ -13,17 +13,90 @@ let mapViewChanged = 0;
 let trips = [];
 let arrivals;
 let departures;
+let timeFilter =-1;
+let filteredTrips = [];
+let filteredArrival = [];
+let filteredDepartures = [];
+let filteredStations = [];
+
+let departuresByMinute = Array.from({ length: 1440 }, () => []);
+let arrivalsByMinute = Array.from({ length: 1440 }, () => []);
 
 function getCoords(station) {
         let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
         let { x, y } = map.project(point);
         return { cx: x, cy: y };
     }
+
+    function minutesSinceMidnight(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function filterByMinute(tripsByMinute, minute) {
+  // Normalize both to the [0, 1439] range
+  // % is the remainder operator: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Remainder
+  let minMinute = (minute - 60 + 1440) % 1440;
+  let maxMinute = (minute + 60) % 1440;
+
+  if (minMinute > maxMinute) {
+    let beforeMidnight = tripsByMinute.slice(minMinute);
+    let afterMidnight = tripsByMinute.slice(0, maxMinute);
+    return beforeMidnight.concat(afterMidnight).flat();
+  } else {
+    return tripsByMinute.slice(minMinute, maxMinute).flat();
+  }
+}
+
 $: map?.on('move', (evt) => mapViewChanged++);
+
 $: radiusScale = d3
     .scaleSqrt()
     .domain([0, d3.max(stations, (d) => d.totalTraffic)])
-    .range([0, 25]);    
+    .range(timeFilter === -1 ? [0, 25] : [3, 50]);    
+$: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter).toLocaleString('en', {
+  timeStyle: 'short',});    
+
+$: filteredTrips =
+    timeFilter === -1
+    ? trips
+    : trips.filter((trip) => {
+        let startedMinutes = minutesSinceMidnight(trip.started_at);
+        departuresByMinute[startedMinutes].push(trip);
+
+        let endedMinutes = minutesSinceMidnight(trip.ended_at);
+        arrivalsByMinute[endedMinutes].push(trip);
+        return (
+          Math.abs(startedMinutes - timeFilter) <= 60 ||
+          Math.abs(endedMinutes - timeFilter) <= 60
+        );
+      });  
+
+$: filteredArrivals = d3.rollup(
+    filteredTrips,
+    (v) => v.length,
+    (d) => d.end_station_id
+    );
+
+$: filteredDepartures = d3.rollup(
+    filteredTrips,
+    (v) => v.length,
+    (d) => d.start_station_id
+    );
+
+
+$: filteredStations = stations.map((station) => {
+    let id = station.Number;
+    let arrivalsCount = filteredArrivals.get(id) ?? 0;
+    let departuresCount = filteredDepartures.get(id) ?? 0;
+    station = { ...station }; // Clone the station object
+        station.arrivals = arrivalsCount;
+        station.departures = departuresCount;
+        station.totalTraffic = arrivalsCount + departuresCount;
+        return station;
+    });
+
+
+
 
 onMount(async () => {
     map = new mapboxgl.Map({
@@ -81,15 +154,15 @@ onMount(async () => {
 
     }));
 
-   trips = await d3.csv('https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-traffic-2024-03.csv',(d) => ({
-        rid_id: d.rid_id,
-        bike_type: d.bike_type,
-        started_at: d.started_at,
-        ended_at: d.ended_at,
-        start_station_id: d.start_station_id,
-        end_station_id: d.end_station_id,
-        is_member: d.is_member
-    }));
+    trips = await d3
+        .csv("https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-traffic-2024-03.csv")
+        .then(data => {
+	    for (let trip of data) {
+		trip.started_at = new Date(trip.started_at);
+            trip.ended_at = new Date(trip.ended_at);
+	}
+	return data;
+});
 
     departures = d3.rollup(
         trips,
@@ -101,8 +174,6 @@ onMount(async () => {
         (v) => v.length,
         (d) => d.end_station_id
     );
-
-
     stations = stations.map((station) => {
         let id = station.Number;
         station.arrivals = arrivals.get(id) ?? 0;
@@ -110,6 +181,9 @@ onMount(async () => {
         station.totalTraffic = station.arrivals + station.departures;
         return station;
     });
+
+
+
 
 
   });
@@ -120,9 +194,12 @@ onMount(async () => {
     <h1> <a src='favicon.svg'></a> Bikewatching</h1>
     <label>
         Filter by time:
-        <input type="range" id = "time-slider" min="-1" max="1440"/>
+        <input type="range" id = "time-slider" min="-1" max="1440" bind:value={timeFilter}/>
+        {#if timeFilter === -1}
         <em>(any time)</em>
-        <time>11:17pm</time>
+        {:else}
+        <time>{timeFilterLabel}</time>
+        {/if}
 
     </label>
 </header>
@@ -130,7 +207,7 @@ onMount(async () => {
 <div id="map">
     {#key mapViewChanged}
     <svg id="station-points">
-        {#each stations as station}
+        {#each filteredStations as station}
             <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill='steelblue'>
                 <title>
                     {station.totalTraffic} trips ({station.departures} departures, {station.arrivals} arrivals)
