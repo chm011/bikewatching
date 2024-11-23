@@ -85,6 +85,19 @@ onMount(async () => {
         (v) => v.length,
         (d) => d.start_station_id
     );
+
+
+    stations = stations.map((station) => {
+        let id = station.Number;
+        stations.arrivals = arrivals.get(id) ?? 0;
+        station.departures = departures.get(id) ?? 0;
+        station.totalTraffic = station.arrivals + station.departures;
+        return station;
+    });
+    $: radiusScale = d3
+        .scaleSqrt()
+        .domain([0, d3.max(stations, (d) => d.totalTraffic)])
+        .range([0, 25]);
   });
 
 
