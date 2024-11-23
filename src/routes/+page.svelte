@@ -12,7 +12,8 @@ let stations = [];
 let mapViewChanged = 0;
 let trips = [];
 
-
+let arrivals;
+let departures;
 function getCoords(station) {
         let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
         let { x, y } = map.project(point);
@@ -89,15 +90,16 @@ onMount(async () => {
 
     stations = stations.map((station) => {
         let id = station.Number;
-        stations.arrivals = arrivals.get(id) ?? 0;
+        station.arrivals = arrivals.get(id) ?? 0;
         station.departures = departures.get(id) ?? 0;
         station.totalTraffic = station.arrivals + station.departures;
         return station;
     });
+
     $: radiusScale = d3
-        .scaleSqrt()
-        .domain([0, d3.max(stations, (d) => d.totalTraffic)])
-        .range([0, 25]);
+    .scaleSqrt()
+    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
+    .range([0, 25]);
   });
 
 
