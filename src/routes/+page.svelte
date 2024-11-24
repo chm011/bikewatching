@@ -21,26 +21,29 @@ let filteredStations = [];
 
 let departuresByMinute = Array.from({ length: 1440 }, () => []);
 let arrivalsByMinute = Array.from({ length: 1440 }, () => []);
+let stationFlow = d3.scaleQuantize().domain([0, 1]).range([0, 0.5, 1]);
 
 function getCoords(station) {
         let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
         let { x, y } = map.project(point);
+        console.log(`Coords for station${station.NAME}: x=${x}, y=${y}`);
         return { cx: x, cy: y };
     }
 
-    function minutesSinceMidnight(date) {
+function minutesSinceMidnight(date) {
   return date.getHours() * 60 + date.getMinutes();
 }
-
 function filterByMinute(tripsByMinute, minute) {
   // Normalize both to the [0, 1439] range
   // % is the remainder operator: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Remainder
+  console.log("Minute:", minute);
   let minMinute = (minute - 60 + 1440) % 1440;
   let maxMinute = (minute + 60) % 1440;
 
   if (minMinute > maxMinute) {
     let beforeMidnight = tripsByMinute.slice(minMinute);
     let afterMidnight = tripsByMinute.slice(0, maxMinute);
+
     return beforeMidnight.concat(afterMidnight).flat();
   } else {
     return tripsByMinute.slice(minMinute, maxMinute).flat();
@@ -51,52 +54,36 @@ $: map?.on('move', (evt) => mapViewChanged++);
 
 $: radiusScale = d3
     .scaleSqrt()
-    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
-    .range(timeFilter === -1 ? [0, 25] : [3, 50]);    
+    .domain([0, d3.max(timeFilter === -1 ? stations : filteredStations, (d) => d.totalTraffic)]) 
+    .range(timeFilter === -1 ? [3, 25] : [0, 25]); 
+
 $: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter).toLocaleString('en', {
   timeStyle: 'short',});    
 
-$: filteredTrips =
-    timeFilter === -1
-    ? trips
-    : trips.filter((trip) => {
-        let startedMinutes = minutesSinceMidnight(trip.started_at);
-        departuresByMinute[startedMinutes].push(trip);
-
-        let endedMinutes = minutesSinceMidnight(trip.ended_at);
-        arrivalsByMinute[endedMinutes].push(trip);
-        return (
-          Math.abs(startedMinutes - timeFilter) <= 60 ||
-          Math.abs(endedMinutes - timeFilter) <= 60
-        );
-      });  
-
-$: filteredArrivals = d3.rollup(
-    filteredTrips,
-    (v) => v.length,
-    (d) => d.end_station_id
-    );
 
 $: filteredDepartures = d3.rollup(
-    filteredTrips,
+   timeFilter !== -1? filterByMinute(departuresByMinute, timeFilter) : trips,
     (v) => v.length,
     (d) => d.start_station_id
     );
 
+$: filteredArrivals = d3.rollup(
+    timeFilter !== -1 ? filterByMinute(arrivalsByMinute, timeFilter) : trips,
+    (v) => v.length,
+    (d) => d.end_station_id
+    );
 
 $: filteredStations = stations.map((station) => {
     let id = station.Number;
     let arrivalsCount = filteredArrivals.get(id) ?? 0;
     let departuresCount = filteredDepartures.get(id) ?? 0;
+
     station = { ...station }; // Clone the station object
         station.arrivals = arrivalsCount;
         station.departures = departuresCount;
         station.totalTraffic = arrivalsCount + departuresCount;
         return station;
     });
-
-
-
 
 onMount(async () => {
     map = new mapboxgl.Map({
@@ -158,35 +145,47 @@ onMount(async () => {
         .csv("https://dsc-courses.github.io/dsc106-2025-wi/labs/lab08/data/bluebikes-traffic-2024-03.csv")
         .then(data => {
 	    for (let trip of data) {
-		trip.started_at = new Date(trip.started_at);
+		    trip.started_at = new Date(trip.started_at);
             trip.ended_at = new Date(trip.ended_at);
-	}
+
+            let startedMinutes = minutesSinceMidnight(trip.started_at);
+            departuresByMinute[startedMinutes].push(trip);
+   
+            let endedMinutes = minutesSinceMidnight(trip.ended_at);
+            arrivalsByMinute[endedMinutes].push(trip);
+
+	        }
 	return data;
-});
+    });
+
 
     departures = d3.rollup(
         trips,
         (v) => v.length,
         (d) => d.start_station_id
     );
+
     arrivals = d3.rollup(
         trips,
         (v) => v.length,
         (d) => d.end_station_id
     );
+
     stations = stations.map((station) => {
         let id = station.Number;
         station.arrivals = arrivals.get(id) ?? 0;
         station.departures = departures.get(id) ?? 0;
         station.totalTraffic = station.arrivals + station.departures;
+        station.departureRatio = station.totalTraffic > 0 ? station.departures / station.totalTraffic : 0.5;
+
         return station;
     });
 
+});
 
 
 
 
-  });
 
 
 </script>
@@ -208,7 +207,9 @@ onMount(async () => {
     {#key mapViewChanged}
     <svg id="station-points">
         {#each filteredStations as station}
-            <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill='steelblue'>
+            <circle {...getCoords(station)} 
+            r={radiusScale(station.totalTraffic)}
+            style="--departure-ratio: { stationFlow(station.departures / station.totalTraffic) }">
                 <title>
                     {station.totalTraffic} trips ({station.departures} departures, {station.arrivals} arrivals)
                 </title>
@@ -217,6 +218,11 @@ onMount(async () => {
     </svg>
     {/key}
 </div>
+<div class="legend">
+    <div style="--departure-ratio: 1">More departures</div>
+    <div style="--departure-ratio: 0.5">Balanced</div>
+    <div style="--departure-ratio: 0">More arrivals</div>
+  </div>
 
 
 <style>

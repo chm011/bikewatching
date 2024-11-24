@@ -23,13 +23,59 @@ body {
     pointer-events: none;
   }
 
-circle {
+#map circle {
     pointer-events: auto;
     fill-opacity: 0.6;
     stroke: white;
-    fill: steelblue;
+    fill: var(--color);
+
+}
+
+#map circle,
+.legend > div {
+    --color-departures: steelblue;
+    --color-arrivals: darkorange;
+    --color: color-mix(in oklch,
+    var(--color-departures) calc(100% * var(--departure-ratio)),
+    var(--color-arrivals)
+    );
+    
+
+}
+
+.legend {
+    display: flex;
+    margin-block: 1em;
+    gap: 1px;
+
+}
+
+.legend > div {
+    flex: 1;
+    background-color: var(--color);
+    color: white;
+    font-weight: bold;
+    padding: 0.2em;
     
 }
+
+.legend > div:first-child {
+    text-align: left; 
+    justify-content: flex-start; 
+    padding-left: 1em;
+}
+
+.legend > div:nth-child(2) {
+    text-align: center; 
+    justify-content: center; 
+}
+  
+.legend > div:last-child {
+    text-align: right; 
+    justify-content: flex-end; 
+    padding-right: 1em;
+}
+
 header{
     display: flex;
     gap: 1em;
