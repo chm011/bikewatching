@@ -14,7 +14,7 @@ body {
     flex: 1;
     background-color: palegoldenrod;
   }
-  
+
 #map svg {
     position: absolute;
     z-index: 1;
@@ -31,6 +31,7 @@ body {
 
 }
 
+
 #map circle,
 .legend > div {
     --color-departures: steelblue;
@@ -42,6 +43,11 @@ body {
     
 
 }
+
+#station-points{
+    pointer-events: none;
+}
+
 
 .legend {
     display: flex;
@@ -96,3 +102,4 @@ em{
     font-style: italic;
 
 }
+

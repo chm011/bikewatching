@@ -176,10 +176,9 @@ onMount(async () => {
         station.arrivals = arrivals.get(id) ?? 0;
         station.departures = departures.get(id) ?? 0;
         station.totalTraffic = station.arrivals + station.departures;
-        station.departureRatio = station.totalTraffic > 0 ? station.departures / station.totalTraffic : 0.5;
-
         return station;
     });
+
 
 });
 
